@@ -1,0 +1,5 @@
+{
+  "host": "PRINTER_LAN_IP",
+  "serial": "PRINTER_SERIAL_NUMBER",
+  "password": "PRINTER_LAN_PASSWORD_OR_ACCESS_CODE"
+}

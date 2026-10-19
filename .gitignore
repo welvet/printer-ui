@@ -1,0 +1,15 @@
+node_modules/
+.next/
+backend/.venv/
+__pycache__/
+*.log
+out/
+.env
+.env.*
+!.env.example
+config.json
+nginx.conf.before-*
+.DS_Store
+*.pem
+*.key
+*.crt
