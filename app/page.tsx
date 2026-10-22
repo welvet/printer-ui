@@ -4,6 +4,31 @@ type Data = Record<string, any>;
 const states=['Starting','Ready','Printing','Filament operation','Filament operation','Bed leveling','PID calibration','Resonance test','Self check','Updating','Homing','File transfer','Timelapse','Extruder operation','Emergency stop','Power recovery'];
 const time=(s:number|undefined)=>s==null?'—':`${Math.floor(s/3600)}h ${Math.floor(s%3600/60)}m`;
 function CameraFeed(){
+ const panel=useRef<HTMLElement>(null);
+ const [expanded,setExpanded]=useState(false);
+ const [nativeFullscreen,setNativeFullscreen]=useState(false);
+ const fullscreen=expanded||nativeFullscreen;
+ const toggleFullscreen=async()=>{
+  if(document.fullscreenElement===panel.current){await document.exitFullscreen();return;}
+  if(expanded){setExpanded(false);return;}
+  try{
+   if(!panel.current?.requestFullscreen)throw new Error('Fullscreen unavailable');
+   await panel.current.requestFullscreen();
+  }catch{setExpanded(true);}
+ };
+ useEffect(()=>{
+  const changed=()=>setNativeFullscreen(document.fullscreenElement===panel.current);
+  document.addEventListener('fullscreenchange',changed);
+  return ()=>document.removeEventListener('fullscreenchange',changed);
+ },[]);
+ useEffect(()=>{
+  if(!expanded)return;
+  const previous=document.body.style.overflow;
+  document.body.style.overflow='hidden';
+  const escape=(e:KeyboardEvent)=>{if(e.key==='Escape')setExpanded(false);};
+  window.addEventListener('keydown',escape);
+  return ()=>{document.body.style.overflow=previous;window.removeEventListener('keydown',escape);};
+ },[expanded]);
  const image=useRef<HTMLImageElement>(null);
  const retry=useRef<ReturnType<typeof setTimeout>|null>(null);
  const [source,setSource]=useState<string|null>(null);
@@ -46,7 +71,7 @@ function CameraFeed(){
   return ()=>{disposed=true;clearInterval(watchdog);if(retry.current)clearTimeout(retry.current);};
  },[]);
  const failed=()=>{setUnavailable(true);if(retry.current)clearTimeout(retry.current);retry.current=setTimeout(reconnect,2000);};
- return <section className="camera panel"><div className="panelhead"><h2>Camera</h2><button className="quiet" onClick={reconnect} aria-label="Reconnect camera" title="Reconnect camera"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1"/></svg></button></div><div className="feed">{source&&<img ref={image} key={source} src={source} alt="Live view inside the Centauri Carbon 2" onLoad={()=>setUnavailable(false)} onError={failed}/ >}{unavailable&&<p role="status">Reconnecting camera…</p>}</div></section>;
+ return <section ref={panel} className={`camera panel${expanded?' expanded':''}`}><div className="panelhead"><h2>Camera</h2><div className="camera-actions"><button className="quiet" onClick={reconnect} aria-label="Reconnect camera" title="Reconnect camera"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1"/></svg></button><button className="quiet" onClick={toggleFullscreen} aria-label={fullscreen?'Exit fullscreen':'Fullscreen camera'} title={fullscreen?'Exit fullscreen':'Fullscreen camera'} aria-pressed={fullscreen}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d={fullscreen?'M9 3v6H3m18 0h-6V3M3 15h6v6m6 0v-6h6':'M9 3H3v6m12-6h6v6M3 15v6h6m6 0h6v-6'}/></svg></button></div></div><div className="feed">{source&&<img ref={image} key={source} src={source} alt="Live view inside the Centauri Carbon 2" onLoad={()=>setUnavailable(false)} onError={failed}/ >}{unavailable&&<p role="status">Reconnecting camera…</p>}</div></section>;
 }
 export default function Home(){
  const [data,setData]=useState<Data>({}),[attrs,setAttrs]=useState<Data>({}),[connection,setConnection]=useState('Connecting…'),[last,setLast]=useState(0),[now,setNow]=useState(0),[confirm,setConfirm]=useState(false),[notice,setNotice]=useState(''),[pending,setPending]=useState(false);
