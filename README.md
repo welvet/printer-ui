@@ -67,3 +67,14 @@ backend/.venv/bin/python backend/check_readonly.py
 
 Checks cached API requests, server-sent events, concurrent camera viewers, advancing
 frames, and removal of the raw MQTT proxy. Does not invoke the stop endpoint.
+
+## iPhone video fullscreen
+
+Safari uses a native HLS `<video>` stream at `/camera/hls/index.m3u8` so the
+fullscreen button can open the iPhone video player. Other browsers retain MJPEG.
+A single FFmpeg encoder (packaged by `imageio-ffmpeg` in the Python venv) reads
+from the existing frame cache, so this does not add printer connections. HLS
+adds a few seconds of buffering; resolution remains that of the camera source.
+Segments are kept in a temporary directory with a bounded rolling playlist and
+are removed when the encoder shuts down normally. The backend startup service
+also starts the encoder automatically.
