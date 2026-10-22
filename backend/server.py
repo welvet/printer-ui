@@ -24,7 +24,9 @@ SERIAL = os.getenv('PRINTER_SERIAL') or CONFIG.get('serial')
 PASSWORD = os.getenv('PRINTER_PASSWORD') or CONFIG.get('password')
 if not all((HOST, SERIAL, PASSWORD)):
     raise RuntimeError('Configure printer host, serial and password in PRINTER_CONFIG or environment')
-ORIGINS = {'http://print-view.local', 'https://print-view.local'}
+# Keep aligned with the nginx host aliases; do not accept arbitrary origins.
+ORIGINS = {f'{scheme}://{host}' for scheme in ('http', 'https')
+           for host in ('print-view.local', 'print-view.lan')}
 
 
 def merge(target, delta):
