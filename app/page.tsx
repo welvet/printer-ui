@@ -19,14 +19,32 @@ function CameraFeed(){
   return ()=>{document.removeEventListener('visibilitychange',resume);window.removeEventListener('online',reconnect);};
  },[]);
  useEffect(()=>{
-  if(!source)return;
-  // MJPEG load events differ across browsers. Check decoded dimensions too.
-  const watchdog=setInterval(()=>{
-   if(!image.current?.naturalWidth){setUnavailable(true);setSource(`/camera/?v=${Date.now()}`);}
-   else setUnavailable(false);
-  },10000);
-  return ()=>{clearInterval(watchdog);if(retry.current)clearTimeout(retry.current);};
- },[source]);
+  let disposed=false,checking=false,wasOffline=false,lastVersion:number|null=null;
+  let lastAdvance=Date.now(),lastReconnect=0;
+  const check=async()=>{
+   if(checking)return;
+   checking=true;
+   try{
+    const response=await fetch('/api/health',{cache:'no-store',signal:AbortSignal.timeout(4000)});
+    if(!response.ok)throw new Error('Backend unavailable');
+    const health=await response.json();
+    if(disposed)return;
+    if(!health.camera_connected){wasOffline=true;setUnavailable(true);return;}
+    const now=Date.now();
+    if(lastVersion!==health.camera_frames){lastAdvance=now;lastVersion=health.camera_frames;}
+    const stalled=now-lastAdvance>15000;
+    setUnavailable(stalled);
+    // Dimensions alone cannot detect a frozen MJPEG image after a reboot.
+    if((wasOffline||!image.current?.naturalWidth||stalled)&&now-lastReconnect>10000){
+     lastReconnect=now;reconnect();setUnavailable(stalled);
+    }
+    wasOffline=false;
+   }catch{if(!disposed){wasOffline=true;setUnavailable(true);}}
+   finally{checking=false;}
+  };
+  const watchdog=setInterval(check,3000);
+  return ()=>{disposed=true;clearInterval(watchdog);if(retry.current)clearTimeout(retry.current);};
+ },[]);
  const failed=()=>{setUnavailable(true);if(retry.current)clearTimeout(retry.current);retry.current=setTimeout(reconnect,2000);};
  return <section className="camera panel"><div className="panelhead"><h2>Camera</h2><button className="quiet" onClick={reconnect} aria-label="Reconnect camera" title="Reconnect camera"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1"/></svg></button></div><div className="feed">{source&&<img ref={image} key={source} src={source} alt="Live view inside the Centauri Carbon 2" onLoad={()=>setUnavailable(false)} onError={failed}/ >}{unavailable&&<p role="status">Reconnecting camera…</p>}</div></section>;
 }

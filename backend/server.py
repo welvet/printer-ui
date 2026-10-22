@@ -178,6 +178,8 @@ class Camera:
         self.condition = asyncio.Condition()
         self.viewers = 0
         self.upstream_connected = False
+        self.viewer_wait = 20
+        self.reconnect_delay = 2
 
     async def run(self):
         async with httpx.AsyncClient(timeout=httpx.Timeout(10, read=15), trust_env=False) as client:
@@ -187,7 +189,10 @@ class Camera:
                         response.raise_for_status()
                         self.upstream_connected = True
                         buffer = bytearray()
+                        last_frame = time.monotonic()
                         async for chunk in response.aiter_bytes():
+                            if time.monotonic() - last_frame > 15:
+                                raise ValueError("Camera stopped producing frames")
                             buffer.extend(chunk)
                             while True:
                                 start = buffer.find(b'\xff\xd8')
@@ -206,13 +211,14 @@ class Camera:
                                 async with self.condition:
                                     self.frame = frame
                                     self.updated = time.monotonic()
+                                    last_frame = self.updated
                                     self.version += 1
                                     self.condition.notify_all()
-                except (httpx.HTTPError, ValueError):
-                    log.warning('Camera disconnected; reconnecting')
+                except (httpx.HTTPError, ValueError) as error:
+                    log.warning('Camera disconnected (%s); reconnecting', type(error).__name__)
                 finally:
                     self.upstream_connected = False
-                await asyncio.sleep(2)
+                await asyncio.sleep(self.reconnect_delay)
 
     async def stream(self):
         self.viewers += 1
@@ -220,12 +226,15 @@ class Camera:
         try:
             while True:
                 async with self.condition:
-                    await asyncio.wait_for(self.condition.wait_for(lambda: self.version != version and self.frame is not None and time.monotonic() - self.updated < 15), 20)
+                    try:
+                        await asyncio.wait_for(self.condition.wait_for(lambda: self.version != version and self.frame is not None and time.monotonic() - self.updated < 15), self.viewer_wait)
+                    except asyncio.TimeoutError:
+                        # Keep the browser subscribed throughout a printer reboot.
+                        # Ending an MJPEG response may leave a frozen image with no error event.
+                        continue
                     frame, version = self.frame, self.version
                 # Only the latest frame is retained. Slow viewers skip frames instead of buffering.
                 yield b'--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ' + str(len(frame)).encode() + b'\r\n\r\n' + frame + b'\r\n'
-        except asyncio.TimeoutError:
-            return
         finally:
             self.viewers -= 1
 
