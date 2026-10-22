@@ -76,5 +76,6 @@ A single FFmpeg encoder (packaged by `imageio-ffmpeg` in the Python venv) reads
 from the existing frame cache, so this does not add printer connections. HLS
 adds a few seconds of buffering; resolution remains that of the camera source.
 Segments are kept in a temporary directory with a bounded rolling playlist and
-are removed when the encoder shuts down normally. The backend startup service
-also starts the encoder automatically.
+are removed when the encoder shuts down normally. The encoder starts on the first HLS playlist or segment request and stops
+30 seconds after the last request. A new viewer starts it again automatically.
+The camera relay and printer status connection stay available while HLS is idle.

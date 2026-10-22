@@ -292,7 +292,15 @@ async def video():
 async def hls_video(filename: str):
     if filename != 'index.m3u8' and not (filename.startswith('segment') and filename[7:-3].isdigit() and filename.endswith('.ts')):
         raise HTTPException(404)
+    hls.touch()
     path = hls.root / filename
+    if filename == 'index.m3u8':
+        # Let the first video request wait for encoder startup rather than
+        # returning a transient error to Safari's native player.
+        for _ in range(100):
+            if path.is_file():
+                break
+            await asyncio.sleep(.1)
     if not path.is_file():
         raise HTTPException(503, 'Video warming up', headers={'Retry-After': '2'})
     return FileResponse(path, media_type='application/vnd.apple.mpegurl' if filename.endswith('.m3u8') else 'video/mp2t', headers=NO_CACHE)

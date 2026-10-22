@@ -4,7 +4,6 @@ import logging
 import tempfile
 import time
 from pathlib import Path
-from contextlib import suppress
 
 import imageio_ffmpeg
 
@@ -17,14 +16,30 @@ class HLS:
         self.directory = tempfile.TemporaryDirectory(prefix='print-view-hls-')
         self.root = Path(self.directory.name)
         self.process = None
+        self.idle_timeout = 30
+        self.last_request = float('-inf')
+        self.demand = asyncio.Event()
+
+    def touch(self):
+        self.last_request = time.monotonic()
+        self.demand.set()
+
+    def active(self):
+        return time.monotonic() - self.last_request < self.idle_timeout
+
+    def clear_segments(self):
+        for path in self.root.iterdir():
+            path.unlink(missing_ok=True)
 
     async def run(self):
         try:
             while True:
+                await self.demand.wait()
+                self.demand.clear()
+                if not self.active():
+                    continue
                 try:
-                    # A new output directory prevents serving segments from an old encoder.
-                    for path in self.root.iterdir():
-                        path.unlink()
+                    self.clear_segments()
                     self.process = await asyncio.create_subprocess_exec(
                         imageio_ffmpeg.get_ffmpeg_exe(), '-hide_banner', '-loglevel', 'error',
                         '-f', 'image2pipe', '-vcodec', 'mjpeg', '-framerate', '10', '-i', 'pipe:0',
@@ -37,7 +52,7 @@ class HLS:
                         '-hls_segment_filename', str(self.root / 'segment%d.ts'),
                         str(self.root / 'index.m3u8'),
                         stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.DEVNULL)
-                    while True:
+                    while self.active():
                         frame = self.camera.frame
                         if frame and time.monotonic() - self.camera.updated < 15:
                             self.process.stdin.write(frame)
@@ -51,6 +66,10 @@ class HLS:
                     if self.process and self.process.returncode is None:
                         self.process.kill()
                         await self.process.wait()
-                await asyncio.sleep(2)
+                    self.process = None
+                    self.clear_segments()
+                if self.active():
+                    await asyncio.sleep(2)
+                    self.demand.set()
         finally:
             self.directory.cleanup()
