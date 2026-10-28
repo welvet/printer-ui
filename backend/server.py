@@ -13,8 +13,7 @@ from pathlib import Path
 import httpx
 import paho.mqtt.client as mqtt
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
-from hls import HLS
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 log = logging.getLogger('uvicorn.error')
@@ -242,14 +241,13 @@ class Camera:
 
 printer = Printer()
 camera = Camera()
-hls = HLS(camera)
 
 
 @asynccontextmanager
 async def lifespan(app):
     printer.mqtt.connect_async(HOST, 1883, 60)
     printer.mqtt.loop_start()
-    tasks = [asyncio.create_task(printer.heartbeat()), asyncio.create_task(camera.run()), asyncio.create_task(hls.run())]
+    tasks = [asyncio.create_task(printer.heartbeat()), asyncio.create_task(camera.run())]
     yield
     for task in tasks:
         task.cancel()
@@ -286,24 +284,6 @@ async def health():
 @app.get('/camera/')
 async def video():
     return StreamingResponse(camera.stream(), media_type='multipart/x-mixed-replace; boundary=frame', headers=NO_CACHE)
-
-
-@app.get('/camera/hls/{filename}')
-async def hls_video(filename: str):
-    if filename != 'index.m3u8' and not (filename.startswith('segment') and filename[7:-3].isdigit() and filename.endswith('.ts')):
-        raise HTTPException(404)
-    hls.touch()
-    path = hls.root / filename
-    if filename == 'index.m3u8':
-        # Let the first video request wait for encoder startup rather than
-        # returning a transient error to Safari's native player.
-        for _ in range(100):
-            if path.is_file():
-                break
-            await asyncio.sleep(.1)
-    if not path.is_file():
-        raise HTTPException(503, 'Video warming up', headers={'Retry-After': '2'})
-    return FileResponse(path, media_type='application/vnd.apple.mpegurl' if filename.endswith('.m3u8') else 'video/mp2t', headers=NO_CACHE)
 
 
 class StopRequest(BaseModel):

@@ -5,20 +5,10 @@ const states=['Starting','Ready','Printing','Filament operation','Filament opera
 const time=(s:number|undefined)=>s==null?'—':`${Math.floor(s/3600)}h ${Math.floor(s%3600/60)}m`;
 function CameraFeed(){
  const panel=useRef<HTMLElement>(null);
- const video=useRef<HTMLVideoElement>(null);
- const [nativeVideo,setNativeVideo]=useState(false);
- useEffect(()=>{setNativeVideo(!!document.createElement('video').canPlayType('application/vnd.apple.mpegurl'));},[]);
  const [expanded,setExpanded]=useState(false);
  const [nativeFullscreen,setNativeFullscreen]=useState(false);
  const fullscreen=expanded||nativeFullscreen;
  const toggleFullscreen=async()=>{
-  if(nativeVideo&&video.current){
-   const player=video.current as HTMLVideoElement & {webkitEnterFullscreen?:()=>void};
-   if(player.webkitEnterFullscreen){
-    try{player.webkitEnterFullscreen();void player.play().catch(()=>{});return;}catch{/* Use the panel fallback if video is not ready. */}
-   }
-   if(player.requestFullscreen){try{await player.requestFullscreen();void player.play().catch(()=>{});return;}catch{}}
-  }
   if(document.fullscreenElement===panel.current){await document.exitFullscreen();return;}
   if(expanded){setExpanded(false);return;}
   try{
@@ -70,7 +60,7 @@ function CameraFeed(){
     const stalled=now-lastAdvance>15000;
     setUnavailable(stalled);
     // Dimensions alone cannot detect a frozen MJPEG image after a reboot.
-    if((wasOffline||!(nativeVideo?video.current&&video.current.readyState>=2:image.current?.naturalWidth)||stalled)&&now-lastReconnect>10000){
+    if((wasOffline||!image.current?.naturalWidth||stalled)&&now-lastReconnect>10000){
      lastReconnect=now;reconnect();setUnavailable(stalled);
     }
     wasOffline=false;
@@ -79,9 +69,9 @@ function CameraFeed(){
   };
   const watchdog=setInterval(check,3000);
   return ()=>{disposed=true;clearInterval(watchdog);if(retry.current)clearTimeout(retry.current);};
- },[nativeVideo]);
+ },[]);
  const failed=()=>{setUnavailable(true);if(retry.current)clearTimeout(retry.current);retry.current=setTimeout(reconnect,2000);};
- return <section ref={panel} className={`camera panel${expanded?' expanded':''}`}><div className="panelhead"><h2>Camera</h2><div className="camera-actions"><button className="quiet" onClick={reconnect} aria-label="Reconnect camera" title="Reconnect camera"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1"/></svg></button><button className="quiet" onClick={toggleFullscreen} aria-label={fullscreen?'Exit fullscreen':'Fullscreen camera'} title={fullscreen?'Exit fullscreen':'Fullscreen camera'} aria-pressed={fullscreen}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d={fullscreen?'M9 3v6H3m18 0h-6V3M3 15h6v6m6 0v-6h6':'M9 3H3v6m12-6h6v6M3 15v6h6m6 0h6v-6'}/></svg></button></div></div><div className="feed">{source&&(nativeVideo?<video ref={video} src={`/camera/hls/index.m3u8${source.slice(source.indexOf('?'))}`} controls autoPlay muted playsInline preload="auto" aria-label="Live camera video" onPlaying={()=>setUnavailable(false)} onError={failed}/>:<img ref={image} key={source} src={source} alt="Live view inside the Centauri Carbon 2" onLoad={()=>setUnavailable(false)} onError={failed}/>)}{unavailable&&<p role="status">Reconnecting camera…</p>}</div></section>;
+ return <section ref={panel} className={`camera panel${expanded?' expanded':''}`}><div className="panelhead"><h2>Camera</h2><div className="camera-actions"><button className="quiet" onClick={reconnect} aria-label="Reconnect camera" title="Reconnect camera"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1"/></svg></button><button className="quiet" onClick={toggleFullscreen} aria-label={fullscreen?'Exit fullscreen':'Fullscreen camera'} title={fullscreen?'Exit fullscreen':'Fullscreen camera'} aria-pressed={fullscreen}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d={fullscreen?'M9 3v6H3m18 0h-6V3M3 15h6v6m6 0v-6h6':'M9 3H3v6m12-6h6v6M3 15v6h6m6 0h6v-6'}/></svg></button></div></div><div className="feed">{source&&<img ref={image} key={source} src={source} alt="Live view inside the Centauri Carbon 2" onLoad={()=>setUnavailable(false)} onError={failed}/ >}{unavailable&&<p role="status">Reconnecting camera…</p>}</div></section>;
 }
 export default function Home(){
  const [data,setData]=useState<Data>({}),[attrs,setAttrs]=useState<Data>({}),[connection,setConnection]=useState('Connecting…'),[last,setLast]=useState(0),[now,setNow]=useState(0),[confirm,setConfirm]=useState(false),[notice,setNotice]=useState(''),[pending,setPending]=useState(false);
